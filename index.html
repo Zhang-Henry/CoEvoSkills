@@ -278,13 +278,14 @@
 
   h1.title {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: clamp(36px, 6vw, 68px);
+    font-size: clamp(32px, 5vw, 56px);
     font-weight: 700;
-    line-height: 1.05;
+    line-height: 1.1;
     margin: 0 auto 24px;
-    max-width: 960px;
+    max-width: 1180px;
     letter-spacing: -0.03em;
   }
+  h1.title .nowrap { white-space: nowrap; }
   h1.title .gradient {
     background: var(--gradient-1);
     -webkit-background-clip: text;
@@ -677,8 +678,8 @@
     </div>
 
     <h1 class="title">
-      <span class="gradient">CoEvoSkills</span>: Self-Evolving Agent Skills<br/>
-      via Co-Evolutionary Verification
+      <span class="nowrap"><span class="gradient">CoEvoSkills</span>: Self-Evolving Agent Skills</span><br/>
+      <span class="nowrap">via Co-Evolutionary Verification</span>
     </h1>
 
     <p class="subtitle">
