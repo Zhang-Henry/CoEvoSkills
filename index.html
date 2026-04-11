@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CoEvoSkills — Self-Evolving Agent Skills via Co-Evolutionary Verification</title>
+<meta name="description" content="CoEvoSkills: a self-evolving framework that lets LLM agents autonomously construct complex, multi-file skill packages — no ground-truth supervision required." />
+<meta property="og:title" content="CoEvoSkills: Self-Evolving Agent Skills" />
+<meta property="og:description" content="Self-evolving framework for LLM agent skills via co-evolutionary verification. SOTA on SkillsBench." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  // Apply theme before paint to prevent flash
+  (function() {
+    const stored = localStorage.getItem('theme');
+    const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    const theme = stored || (prefersLight ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<style>
+  :root {
+    /* DARK (default) */
+    --bg: #05060a;
+    --bg-2: #0b0d14;
+    --panel: rgba(22, 24, 34, 0.55);
+    --panel-solid: rgba(15, 17, 24, 0.85);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --panel-border-hover: rgba(124, 220, 255, 0.25);
+    --fg: #e8ecf1;
+    --fg-soft: #a8b0bd;
+    --fg-muted: #6b7280;
+    --accent-cyan: #7cdcff;
+    --accent-purple: #b28aff;
+    --accent-pink: #ff6ec7;
+    --accent-green: #5df2b4;
+    --gradient-1: linear-gradient(135deg, #7cdcff 0%, #b28aff 50%, #ff6ec7 100%);
+    --gradient-2: linear-gradient(135deg, #5df2b4 0%, #7cdcff 100%);
+    --blob-opacity: 0.35;
+    --blob-opacity-3: 0.22;
+    --grid-color: rgba(255, 255, 255, 0.025);
+    --nav-bg: rgba(5, 6, 10, 0.65);
+    --code-bg: rgba(0, 0, 0, 0.45);
+    --badge-bg: rgba(255, 255, 255, 0.04);
+    --badge-primary-text: #0a0a12;
+    --figure-bg: #fff;
+    --max-w: 1080px;
+  }
+
+  :root[data-theme="light"] {
+    --bg: #fafbfd;
+    --bg-2: #f2f4f8;
+    --panel: rgba(255, 255, 255, 0.7);
+    --panel-solid: rgba(255, 255, 255, 0.95);
+    --panel-border: rgba(15, 20, 35, 0.08);
+    --panel-border-hover: rgba(109, 90, 220, 0.35);
+    --fg: #0e121b;
+    --fg-soft: #475060;
+    --fg-muted: #7a8596;
+    --accent-cyan: #0891b2;
+    --accent-purple: #6d5adc;
+    --accent-pink: #d8308d;
+    --accent-green: #0e9f6e;
+    --gradient-1: linear-gradient(135deg, #0891b2 0%, #6d5adc 50%, #d8308d 100%);
+    --gradient-2: linear-gradient(135deg, #0e9f6e 0%, #0891b2 100%);
+    --blob-opacity: 0.18;
+    --blob-opacity-3: 0.12;
+    --grid-color: rgba(15, 20, 35, 0.04);
+    --nav-bg: rgba(250, 251, 253, 0.75);
+    --code-bg: rgba(15, 20, 35, 0.04);
+    --badge-bg: rgba(15, 20, 35, 0.03);
+    --badge-primary-text: #ffffff;
+    --figure-bg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.7;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    position: relative;
+    transition: background 0.4s ease, color 0.4s ease;
+  }
+  .glass, .card, .stat, .figure-wrap, pre.bibtex, .badge, .copy-btn, nav.topnav {
+    transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease;
+  }
+
+  /* ---------- Theme toggle ---------- */
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--badge-bg);
+    border: 1px solid var(--panel-border);
+    color: var(--fg);
+    cursor: pointer;
+    margin-left: 16px;
+    transition: all 0.25s ease;
+    padding: 0;
+  }
+  .theme-toggle:hover {
+    border-color: var(--panel-border-hover);
+    background: rgba(124, 220, 255, 0.08);
+    transform: translateY(-1px);
+  }
+  .theme-toggle svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="light"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="light"] .theme-toggle .icon-moon { display: none; }
+  .nav-right {
+    display: flex;
+    align-items: center;
+  }
+
+  /* ---------- Animated background blobs ---------- */
+  .bg-layer {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .bg-layer::before,
+  .bg-layer::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: var(--blob-opacity);
+    animation: float 18s ease-in-out infinite;
+    transition: opacity 0.4s ease;
+  }
+  .bg-layer::before {
+    width: 620px; height: 620px;
+    background: radial-gradient(circle, var(--accent-cyan) 0%, transparent 70%);
+    top: -200px; left: -150px;
+  }
+  .bg-layer::after {
+    width: 720px; height: 720px;
+    background: radial-gradient(circle, var(--accent-purple) 0%, transparent 70%);
+    top: 40%; right: -250px;
+    animation-delay: -9s;
+  }
+  .blob-3 {
+    position: fixed;
+    width: 540px; height: 540px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-pink) 0%, transparent 70%);
+    filter: blur(120px);
+    opacity: var(--blob-opacity-3);
+    bottom: -180px; left: 30%;
+    z-index: -2;
+    animation: float 22s ease-in-out infinite;
+    animation-delay: -4s;
+    transition: opacity 0.4s ease;
+  }
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(40px, -30px) scale(1.05); }
+    66% { transform: translate(-30px, 40px) scale(0.95); }
+  }
+
+  /* subtle grid overlay */
+  .grid-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      linear-gradient(var(--grid-color) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+    pointer-events: none;
+  }
+
+  .container {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  /* ---------- Nav ---------- */
+  nav.topnav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .nav-inner {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 14px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .brand {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--gradient-1);
+    box-shadow: 0 0 12px rgba(124, 220, 255, 0.6);
+  }
+  .nav-links {
+    display: flex;
+    gap: 28px;
+    font-size: 14px;
+  }
+  .nav-links a {
+    color: var(--fg-soft);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--accent-cyan); }
+  @media (max-width: 720px) { .nav-links { display: none; } }
+
+  /* ---------- Hero ---------- */
+  header.hero {
+    padding: 100px 28px 80px;
+    text-align: center;
+    position: relative;
+  }
+  .hero-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(124, 220, 255, 0.08);
+    border: 1px solid rgba(124, 220, 255, 0.25);
+    font-size: 13px;
+    color: var(--accent-cyan);
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 28px;
+  }
+  .hero-chip .pulse {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.3); }
+  }
+
+  h1.title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(36px, 6vw, 68px);
+    font-weight: 700;
+    line-height: 1.05;
+    margin: 0 auto 24px;
+    max-width: 960px;
+    letter-spacing: -0.03em;
+  }
+  h1.title .gradient {
+    background: var(--gradient-1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-block;
+  }
+  .subtitle {
+    font-size: clamp(16px, 2vw, 20px);
+    color: var(--fg-soft);
+    max-width: 720px;
+    margin: 0 auto 36px;
+    line-height: 1.6;
+  }
+  .subtitle em {
+    color: var(--accent-cyan);
+    font-style: normal;
+    font-weight: 500;
+  }
+
+  .authors {
+    font-size: 15px;
+    color: var(--fg-soft);
+    max-width: 820px;
+    margin: 0 auto 16px;
+    line-height: 1.85;
+  }
+  .authors sup { color: var(--accent-cyan); font-size: 11px; }
+  .affiliations {
+    font-size: 13px;
+    color: var(--fg-muted);
+    max-width: 820px;
+    margin: 0 auto 36px;
+  }
+
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 32px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 20px;
+    border-radius: 10px;
+    background: var(--badge-bg);
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(10px);
+    transition: all 0.25s cubic-bezier(.2,.8,.2,1);
+  }
+  .badge:hover {
+    transform: translateY(-2px);
+    border-color: var(--panel-border-hover);
+    background: rgba(124, 220, 255, 0.08);
+    box-shadow: 0 8px 24px rgba(124, 220, 255, 0.15);
+  }
+  .badge.primary {
+    background: var(--gradient-1);
+    border-color: transparent;
+    color: var(--badge-primary-text);
+    font-weight: 600;
+  }
+  .badge.primary:hover {
+    box-shadow: 0 10px 32px rgba(178, 138, 255, 0.45);
+  }
+  .badge svg { width: 16px; height: 16px; }
+
+  /* ---------- Sections ---------- */
+  section {
+    padding: 96px 0;
+    position: relative;
+  }
+  .section-head {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent-cyan);
+    margin-bottom: 12px;
+    padding: 4px 12px;
+    border: 1px solid rgba(124, 220, 255, 0.25);
+    border-radius: 999px;
+    background: rgba(124, 220, 255, 0.05);
+  }
+  h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+  }
+  h2 .gradient {
+    background: var(--gradient-1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .section-sub {
+    color: var(--fg-soft);
+    font-size: 16px;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  h3 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    margin: 48px 0 16px;
+    color: var(--fg);
+  }
+  p {
+    margin: 0 0 18px;
+    color: var(--fg-soft);
+  }
+  p.lead {
+    font-size: 17px;
+    color: var(--fg);
+    line-height: 1.75;
+  }
+  em.accent { color: var(--accent-cyan); font-style: normal; }
+  strong.accent {
+    background: var(--gradient-1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-weight: 700;
+  }
+
+  /* ---------- Glass panels ---------- */
+  .glass {
+    background: var(--panel);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--panel-border);
+    border-radius: 18px;
+    padding: 36px;
+    position: relative;
+    overflow: hidden;
+  }
+  .glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 40%);
+    pointer-events: none;
+  }
+
+  /* ---------- Figure ---------- */
+  .figure {
+    margin: 36px 0;
+    text-align: center;
+  }
+  .figure-wrap {
+    display: inline-block;
+    padding: 16px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    backdrop-filter: blur(16px);
+    max-width: 100%;
+  }
+  .figure img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 10px;
+    display: block;
+    background: var(--figure-bg);
+  }
+  .figure figcaption {
+    font-size: 14px;
+    color: var(--fg-muted);
+    margin-top: 16px;
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.6;
+  }
+  .figure figcaption b { color: var(--fg-soft); }
+
+  /* ---------- Highlights grid ---------- */
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px;
+    margin-top: 32px;
+  }
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+    margin-top: 32px;
+  }
+  .card {
+    background: var(--panel);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 28px 24px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(.2,.8,.2,1);
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(124, 220, 255, 0.4), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: var(--panel-border-hover);
+    background: rgba(124, 220, 255, 0.03);
+  }
+  .card:hover::before { opacity: 1; }
+  .card .icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    background: linear-gradient(135deg, rgba(124, 220, 255, 0.15), rgba(178, 138, 255, 0.15));
+    border: 1px solid rgba(124, 220, 255, 0.2);
+    margin-bottom: 16px;
+  }
+  .card .h {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 8px;
+  }
+  .card .d {
+    font-size: 14px;
+    color: var(--fg-soft);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  /* ---------- Stats strip ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    margin: 48px 0 0;
+  }
+  .stat {
+    text-align: center;
+    padding: 24px 16px;
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+  }
+  .stat .num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 38px;
+    font-weight: 700;
+    background: var(--gradient-1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .stat .lbl {
+    font-size: 13px;
+    color: var(--fg-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ---------- BibTeX ---------- */
+  .bibtex-wrap {
+    position: relative;
+    margin-top: 24px;
+  }
+  pre.bibtex {
+    background: var(--code-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 24px 28px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--fg);
+    margin: 0;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: var(--badge-bg);
+    color: var(--fg);
+    border: 1px solid var(--panel-border);
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.2s;
+  }
+  .copy-btn:hover {
+    background: rgba(124, 220, 255, 0.12);
+    border-color: var(--panel-border-hover);
+    color: var(--accent-cyan);
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    padding: 48px 28px 40px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--fg-muted);
+    border-top: 1px solid var(--panel-border);
+    margin-top: 40px;
+  }
+  footer a { color: var(--accent-cyan); text-decoration: none; }
+
+  /* ---------- Fade-in on scroll ---------- */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 640px) {
+    header.hero { padding: 60px 20px 50px; }
+    section { padding: 60px 0; }
+    .glass { padding: 24px; }
+    .card { padding: 22px 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="blob-3"></div>
+<div class="grid-overlay"></div>
+
+<!-- ================== NAV ================== -->
+<nav class="topnav">
+  <div class="nav-inner">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>CoEvoSkills</span>
+    </div>
+    <div class="nav-right">
+      <div class="nav-links">
+        <a href="#abstract">Abstract</a>
+        <a href="#framework">Framework</a>
+        <a href="#results">Results</a>
+        <a href="#bibtex">Citation</a>
+      </div>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+        <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ================== HERO ================== -->
+<header class="hero">
+  <div class="container">
+    <div class="hero-chip">
+      <span class="pulse"></span>
+      <span>arXiv:2604.01687 · 2026</span>
+    </div>
+
+    <h1 class="title">
+      Self-Evolving <span class="gradient">Agent Skills</span><br/>
+      via Co-Evolutionary Verification
+    </h1>
+
+    <p class="subtitle">
+      A self-evolving framework that lets LLM agents autonomously construct
+      complex, multi-file <em>skill packages</em> — <em>no ground-truth supervision</em> required.
+    </p>
+
+    <div class="authors">
+      Hanrong Zhang, Shicheng Fan, Henry Peng Zou, Yankai Chen, Zhenting Wang,<br/>
+      Jiayu Zhou, Chengze Li, Wei-Chieh Huang, Yifei Yao, Kening Zheng,<br/>
+      Xue Liu, Xiaoxiao Li, Philip S. Yu
+    </div>
+
+    <div class="badges">
+      <a class="badge primary" href="https://arxiv.org/abs/2604.01687" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 3h7v7M21 3l-9 9M20 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h5"/></svg>
+        arXiv
+      </a>
+      <a class="badge" href="https://arxiv.org/pdf/2604.01687" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        PDF
+      </a>
+      <a class="badge" href="#" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+        Code (soon)
+      </a>
+      <a class="badge" href="#" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2h-4M12 15V3M8 7l4-4 4 4"/></svg>
+        SkillsBench
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ================== ABSTRACT ================== -->
+<section id="abstract">
+  <div class="container">
+    <div class="section-head fade-in">
+      <span class="eyebrow">01 / Abstract</span>
+      <h2>The <span class="gradient">Skill Gap</span> in Agentic LLMs</h2>
+    </div>
+
+    <div class="glass fade-in">
+      <p class="lead">
+        Anthropic proposes the concept of <em class="accent">skills</em> for LLM agents to
+        tackle multi-step professional tasks that simple tool invocations cannot address.
+        A tool is a single, self-contained function, whereas a skill is a structured bundle
+        of interdependent multi-file artifacts. Currently, skill generation is label-intensive
+        and suffers from human–machine cognitive misalignment, which degrades agent performance.
+      </p>
+      <p>
+        We propose <strong class="accent">CoEvoSkills</strong>, a self-evolving framework that
+        enables agents to autonomously construct complex, multi-file skill packages. It couples
+        a <b style="color:var(--fg)">Skill Generator</b> that iteratively refines skills with a
+        <b style="color:var(--fg)">Surrogate Verifier</b> that co-evolves to provide informative
+        and actionable feedback <em class="accent">without</em> access to ground-truth test content.
+        On <b style="color:var(--fg)">SkillsBench</b>, CoEvoSkills achieves the highest pass
+        rate among five baselines on both Claude Code and Codex, and also exhibits strong
+        generalization to six additional LLMs.
+      </p>
+    </div>
+
+    <div class="stats fade-in">
+      <div class="stat">
+        <div class="num">5</div>
+        <div class="lbl">baselines beaten</div>
+      </div>
+      <div class="stat">
+        <div class="num">2</div>
+        <div class="lbl">agent backends</div>
+      </div>
+      <div class="stat">
+        <div class="num">6</div>
+        <div class="lbl">transfer LLMs</div>
+      </div>
+      <div class="stat">
+        <div class="num">11</div>
+        <div class="lbl">domains</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== WHAT IS A SKILL ================== -->
+<section id="skill">
+  <div class="container">
+    <div class="section-head fade-in">
+      <span class="eyebrow">02 / Motivation</span>
+      <h2>What is a <span class="gradient">Skill</span>?</h2>
+      <p class="section-sub">
+        A tool is a single function. A skill is an orchestrated package of instructions,
+        scripts, and references for long-horizon professional tasks.
+      </p>
+    </div>
+
+    <figure class="figure fade-in">
+      <div class="figure-wrap">
+        <img src="assets/tool_skill_diff.png" alt="Tool vs. Skill" />
+      </div>
+      <figcaption>
+        <b>Figure 1.</b> A <i>tool</i> is a single self-contained function; a <i>skill</i>
+        is a structured, multi-file package with instructions, scripts, and assets.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================== FRAMEWORK ================== -->
+<section id="framework">
+  <div class="container">
+    <div class="section-head fade-in">
+      <span class="eyebrow">03 / Method</span>
+      <h2>The <span class="gradient">Co-Evolution</span> Loop</h2>
+      <p class="section-sub">
+        Two components evolve together through iterative <em class="accent">generate – verify – refine</em> cycles.
+      </p>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="card">
+        <div class="icon">🛠️</div>
+        <div class="h">Skill Generator</div>
+        <p class="d">Iteratively produces and refines structured multi-file skill bundles from the verifier's dense diagnostic feedback.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🧪</div>
+        <div class="h">Surrogate Verifier</div>
+        <p class="d">Information-isolated; independently evolves test assertions to provide actionable failure signals without ground-truth leakage.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔒</div>
+        <div class="h">Opaque Oracle</div>
+        <p class="d">Returns only a pass/fail signal, triggering test escalation while preserving strict information isolation.</p>
+      </div>
+    </div>
+
+    <figure class="figure fade-in">
+      <div class="figure-wrap">
+        <img src="assets/framework.png" alt="CoEvoSkills Framework" />
+      </div>
+      <figcaption>
+        <b>Figure 2.</b> Overview of the CoEvoSkills co-evolutionary framework. The Skill
+        Generator and Surrogate Verifier co-evolve via iterative refinement; a ground-truth
+        oracle returns only an opaque pass/fail signal, triggering test escalation and
+        preserving information isolation.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================== HIGHLIGHTS ================== -->
+<section id="highlights">
+  <div class="container">
+    <div class="section-head fade-in">
+      <span class="eyebrow">04 / Highlights</span>
+      <h2>Why It <span class="gradient">Matters</span></h2>
+    </div>
+
+    <div class="grid-4 fade-in">
+      <div class="card">
+        <div class="icon">🧩</div>
+        <div class="h">First of its kind</div>
+        <p class="d">First framework to produce structured, executable, multi-file skill packages via self-evolution.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🚫</div>
+        <div class="h">No GT supervision</div>
+        <p class="d">Dense diagnostic feedback without test-content leakage during co-evolution.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🏆</div>
+        <div class="h">SOTA on SkillsBench</div>
+        <p class="d">Highest pass rate among five baselines on Claude Code and Codex.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🌐</div>
+        <div class="h">Cross-model transfer</div>
+        <p class="d">Generated skills transfer effectively to six additional LLMs without retraining.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== RESULTS ================== -->
+<section id="results">
+  <div class="container">
+    <div class="section-head fade-in">
+      <span class="eyebrow">05 / Results</span>
+      <h2>Experiments on <span class="gradient">SkillsBench</span></h2>
+    </div>
+
+    <h3>Main Results</h3>
+    <figure class="figure fade-in">
+      <div class="figure-wrap">
+        <img src="assets/main_results.png" alt="Main results on SkillsBench" />
+      </div>
+      <figcaption>
+        <b>Figure 3.</b> Pass rate on SkillsBench. CoEvoSkills achieves the best performance
+        against five baselines on both Claude Code and Codex.
+      </figcaption>
+    </figure>
+
+    <h3>Cross-Model Transferability</h3>
+    <figure class="figure fade-in">
+      <div class="figure-wrap">
+        <img src="assets/cross_model_transfer.png" alt="Cross-model transfer" />
+      </div>
+      <figcaption>
+        <b>Figure 4.</b> Skills generated by CoEvoSkills transfer effectively to six
+        additional LLMs without retraining.
+      </figcaption>
+    </figure>
+
+    <h3>Per-Domain Breakdown</h3>
+    <figure class="figure fade-in">
+      <div class="figure-wrap">
+        <img src="assets/domain_breakdown.png" alt="Per-domain breakdown" />
+      </div>
+      <figcaption>
+        <b>Figure 5.</b> Per-domain pass rate across the 11 SkillsBench domains.
+      </figcaption>
+    </figure>
+
+    <h3>Evolution Trajectory</h3>
+    <figure class="figure fade-in">
+      <div class="figure-wrap">
+        <img src="assets/evolution_trajectory_preview.png" alt="Evolution trajectory" />
+      </div>
+      <figcaption>
+        <b>Figure 6.</b> Pass rate improves monotonically as the Skill Generator and
+        Surrogate Verifier co-evolve across iterations.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================== BIBTEX ================== -->
+<section id="bibtex">
+  <div class="container">
+    <div class="section-head fade-in">
+      <span class="eyebrow">06 / Citation</span>
+      <h2>Cite <span class="gradient">This Work</span></h2>
+      <p class="section-sub">If you find CoEvoSkills useful, please consider citing:</p>
+    </div>
+
+    <div class="bibtex-wrap fade-in">
+      <button class="copy-btn" onclick="copyBib()">COPY</button>
+<pre class="bibtex" id="bibtex-block">@article{zhang2026coevoskills,
+  title   = {CoEvoSkills: Self-Evolving Agent Skills via
+             Co-Evolutionary Verification},
+  author  = {Zhang, Hanrong and Fan, Shicheng and Zou, Henry Peng and
+             Chen, Yankai and Wang, Zhenting and Zhou, Jiayu and
+             Li, Chengze and Huang, Wei-Chieh and Yao, Yifei and
+             Zheng, Kening and Liu, Xue and Li, Xiaoxiao and
+             Yu, Philip S.},
+  journal = {arXiv preprint arXiv:2604.01687},
+  year    = {2026}
+}</pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>© 2026 CoEvoSkills authors · <a href="https://arxiv.org/abs/2604.01687">arXiv:2604.01687</a></div>
+</footer>
+
+<script>
+  // Copy BibTeX
+  function copyBib() {
+    const text = document.getElementById('bibtex-block').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      const orig = btn.innerText;
+      btn.innerText = 'COPIED ✓';
+      btn.style.color = 'var(--accent-green)';
+      setTimeout(() => {
+        btn.innerText = orig;
+        btn.style.color = '';
+      }, 1500);
+    });
+  }
+
+  // Theme toggle
+  const themeToggle = document.getElementById('theme-toggle');
+  themeToggle.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+  });
+
+  // Scroll fade-in
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -60px 0px' });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
