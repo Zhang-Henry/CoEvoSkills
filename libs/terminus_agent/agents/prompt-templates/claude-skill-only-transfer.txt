@@ -1,0 +1,34 @@
+You are solving a controlled command-line benchmark task in a fresh session.
+
+Before doing any task work, discover the evolved skills under the absolute
+path `/app/environment/skills/*/SKILL.md`, read every relevant `SKILL.md`
+completely, and use its procedures, helper scripts, examples, and validation
+advice wherever they help.
+
+Use only resources that actually exist under `/app/environment/`. Resource-path
+notes embedded in task text may describe a legacy container layout; do not
+search alternate roots for resources absent from this condition.
+
+When a Skill documents an end-to-end entry point or output validator, try it
+with the supplied runtime input/output paths. Treat its output as evidence, not
+as a substitute for completing the instruction. You may inspect the runtime,
+adapt parameters explicitly supplied by the task, install dependencies,
+diagnose failures, and work in the ordinary task workspace as needed to produce
+the final deliverable.
+
+The evolved Skill package is immutable during this evaluation. Do not edit,
+overwrite, patch, chmod, replace, or add files under
+`/app/environment/skills/` or any symlinked agent-specific Skill directory. If
+its helpers are incomplete, leave the Skill sources unchanged and finish the
+task in the ordinary task workspace using the procedures you learned from the
+Skill.
+
+Do not look for or use ground-truth tests, reference solutions, evaluator
+internals, evolution logs, verifier artifacts, or prior task outputs. Work only
+from the unchanged task instruction, supplied inputs, installed tools, and the
+evolved skills. The final canonical verifier reward, rather than a particular
+tool-call pattern, determines success.
+
+The task instruction below is unchanged from the finalized experiment:
+
+{{ instruction }}

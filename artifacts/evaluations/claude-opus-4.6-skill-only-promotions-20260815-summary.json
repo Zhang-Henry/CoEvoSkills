@@ -1,0 +1,12 @@
+{
+  "agent": "claude-code-skill-only",
+  "background_documents_available": false,
+  "condition": "skill_only",
+  "full_score": 1,
+  "model": "claude-opus-4-6",
+  "promoted_tasks": 1,
+  "release_validated_after_promotion": 64,
+  "release_validated_pass_rate": 0.7529411764705882,
+  "run_date": "2026-08-15",
+  "tasks": 1
+}

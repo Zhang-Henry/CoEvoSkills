@@ -1,0 +1,22 @@
+CoEvoSkills
+Copyright 2026 the CoEvoSkills authors
+
+This product contains software adapted from the SkillsBench project:
+https://github.com/benchflow-ai/skillsbench
+
+The bundled tasks/ directory is based on SkillsBench commit
+a7028dfd37cfff86acaf248656cdbd9ad0179592 and includes modifications for the
+CoEvoSkills evaluation environment. Modified task files are distributed under
+the same Apache-2.0 terms.
+
+This product contains software adapted from the Harbor project's Terminus-2
+agent implementation:
+https://github.com/harbor-framework/harbor
+
+The adapted code is primarily located under libs/terminus_agent/. It has been
+modified to support dynamic skill loading, skill evolution, independent
+surrogate verification, ground-truth oracle orchestration, and experiment
+logging.
+
+The skill-creator meta-skill under meta_skills/skill-creator/ retains its
+upstream LICENSE.txt.
