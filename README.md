@@ -4,6 +4,8 @@
 
 ### Self-Evolving Agent Skills via Co-Evolutionary Verification
 
+**Accepted at the Conference on Language Modeling (COLM) 2026.**
+
 [![Paper](https://img.shields.io/badge/Paper-PDF-b31b1b.svg)](https://arxiv.org/pdf/2604.01687)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.01687-b31b1b.svg)](https://arxiv.org/abs/2604.01687)
 [![Website](https://img.shields.io/badge/Website-Project%20Page-4c8bf5.svg)](https://zhang-henry.github.io/CoEvoSkills/)
