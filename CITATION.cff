@@ -1,0 +1,68 @@
+cff-version: 1.2.0
+message: "If you use CoEvoSkills, please cite the paper below."
+title: "CoEvoSkills: Self-Evolving Agent Skills via Co-Evolutionary Verification"
+type: software
+authors:
+  - family-names: Zhang
+    given-names: Hanrong
+  - family-names: Fan
+    given-names: Shicheng
+  - family-names: Zou
+    given-names: Henry Peng
+  - family-names: Chen
+    given-names: Yankai
+  - family-names: Wang
+    given-names: Zhenting
+  - family-names: Zhou
+    given-names: Jiayu
+  - family-names: Li
+    given-names: Chengze
+  - family-names: Huang
+    given-names: Wei-Chieh
+  - family-names: Yao
+    given-names: Yifei
+  - family-names: Zheng
+    given-names: Kening
+  - family-names: Liu
+    given-names: Xue
+  - family-names: Li
+    given-names: Xiaoxiao
+  - family-names: Yu
+    given-names: Philip S.
+version: 0.1.0
+date-released: 2026-08-15
+license: Apache-2.0
+repository-code: "https://github.com/Zhang-Henry/CoEvoSkills"
+url: "https://zhang-henry.github.io/CoEvoSkills/"
+preferred-citation:
+  type: article
+  title: "CoEvoSkills: Self-Evolving Agent Skills via Co-Evolutionary Verification"
+  year: 2026
+  url: "https://arxiv.org/abs/2604.01687"
+  authors:
+    - family-names: Zhang
+      given-names: Hanrong
+    - family-names: Fan
+      given-names: Shicheng
+    - family-names: Zou
+      given-names: Henry Peng
+    - family-names: Chen
+      given-names: Yankai
+    - family-names: Wang
+      given-names: Zhenting
+    - family-names: Zhou
+      given-names: Jiayu
+    - family-names: Li
+      given-names: Chengze
+    - family-names: Huang
+      given-names: Wei-Chieh
+    - family-names: Yao
+      given-names: Yifei
+    - family-names: Zheng
+      given-names: Kening
+    - family-names: Liu
+      given-names: Xue
+    - family-names: Li
+      given-names: Xiaoxiao
+    - family-names: Yu
+      given-names: Philip S.

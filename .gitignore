@@ -1,5 +1,30 @@
+.env
+auth.json
+.venv/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
 .DS_Store
-*.log
-node_modules/
-.vscode/
 .idea/
+.vscode/
+.claude/
+.codex/
+
+# Mutable, run-scoped task workspaces are generated locally. The immutable
+# benchmark tasks and release bundle themselves are part of this repository.
+workspaces/
+
+# Legacy staging location retained only so older local commands cannot add it.
+prepared/
+.upstream/
+
+# Raw model output, task sandboxes, and result files are local-only.
+outputs/
+
+# Legacy output locations are ignored defensively so old command lines cannot
+# accidentally stage raw model output or task sandboxes.
+jobs/
+experiments/
+skillsbench-trajectories/

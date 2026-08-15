@@ -1,0 +1,17 @@
+{
+  "agent": "claude-code-skill-only",
+  "background_documents_available": false,
+  "condition": "skill_only",
+  "full_score": 4,
+  "model": "claude-opus-4-6",
+  "oracle_backend": "claude-code-subscription",
+  "release_commit_tested": "c4b9762",
+  "run_date": "2026-08-15",
+  "run_id": "new-promotions-subscription-recheck-v1-20260815",
+  "skill_manifest_read": 4,
+  "skill_helper_executed": 2,
+  "task_completion_rate": 1.0,
+  "tasks": 4,
+  "tests_passed": 9,
+  "tests_total": 9
+}

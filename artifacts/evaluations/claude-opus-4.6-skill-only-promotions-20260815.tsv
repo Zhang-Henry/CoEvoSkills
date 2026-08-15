@@ -1,0 +1,2 @@
+task	release_status	outcome	reward	tests_passed	tests_total	skill_used	oracle_backend	note
+mario-coin-counting	validated_skill_only_full_score	full_score	1.0	3	3	true	claude-code-subscription	Fresh evolution improved the Skill-only GT result from 2/3 to 3/3 on iteration 2.

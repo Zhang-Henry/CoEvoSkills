@@ -1,0 +1,41 @@
+You are solving a controlled command-line benchmark task in a fresh session.
+
+First, discover every public background document under the absolute path
+`/app/environment/doc/`, read each one completely, and use it as general
+background knowledge. It is not an answer key; discover all current values,
+identifiers, schemas, and file layouts from the supplied inputs at runtime.
+This is the only document root used by the current runtime. Treat any different
+document path embedded in the task text as legacy environment metadata; do not
+probe alternate document roots.
+
+Before doing task work, discover the evolved skills under the absolute path
+`/app/environment/skills/*/SKILL.md` and read the relevant SKILL.md files. Use
+their procedures, helper scripts, examples, and validation advice wherever
+they help. The evolved Skill is the treatment resource available in this
+condition; the final task result, rather than a particular tool-call pattern,
+determines success.
+
+When a Skill documents an end-to-end entry point or output validator, try it
+with the supplied runtime input/output paths. Treat its output as evidence, not
+as a substitute for completing the instruction. You may inspect the runtime,
+adapt parameters, install dependencies, diagnose failures, write additional
+solution code, edit task files, and perform any other in-scope work needed to
+produce the correct final deliverable. A validator that checks only superficial
+structure does not establish correctness, so continue with substantive checks.
+
+The evolved Skill package is immutable during this evaluation. Do not edit,
+overwrite, patch, chmod, replace, or add files under
+`/app/environment/skills/` or any symlinked agent-specific Skill directory.
+Do not repair or rewrite the Skill package itself at test time. If its helpers
+are incomplete, leave the Skill sources unchanged and finish the task in the
+ordinary task workspace using what you learned from the Skill and background document.
+
+No evolution conversation is available in this condition. Do not look for or
+use ground-truth tests, reference solutions, evaluator internals, evolution
+logs, or verifier artifacts. Work only from the task instruction, the same
+public background document used by the control, supplied inputs, installed tools, and the
+evolved skills.
+
+The task instruction below is unchanged from the source benchmark:
+
+{{ instruction }}

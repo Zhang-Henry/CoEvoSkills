@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coevoskills"
+version = "0.1.0"
+description = "Self-evolving agent skills via co-evolutionary verification"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "google-cloud-aiplatform>=1.38",
+    "harbor @ git+https://github.com/laude-institute/harbor.git@3f28e5ce2acbff36d8b5df431e35e050ac13bef6",
+    "jinja2>=3.1",
+    "litellm>=1.80",
+    "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+figures = [
+    "matplotlib>=3.10",
+    "numpy>=2.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[tool.setuptools]
+py-modules = ["run_exp"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["libs*"]
+namespaces = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
