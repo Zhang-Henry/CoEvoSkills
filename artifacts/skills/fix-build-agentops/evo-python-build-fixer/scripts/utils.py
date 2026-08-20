@@ -1,253 +1,213 @@
 import os
-import glob
 import subprocess
-import re
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+import glob
 
 
-def discover_repo(failed_dir: str) -> Tuple[str, str, str]:
-    """Discover the repository path, name, and id under the failed directory.
-    
-    Args:
-        failed_dir: Path to /home/github/build/failed
-    Returns:
-        Tuple of (repo_path, org_name, repo_name)
-    """
-    for org in os.listdir(failed_dir):
-        org_path = os.path.join(failed_dir, org)
-        if not os.path.isdir(org_path):
-            continue
-        for repo in os.listdir(org_path):
-            repo_path = os.path.join(org_path, repo)
-            if os.path.isdir(repo_path) and os.path.isdir(os.path.join(repo_path, '.git')):
-                return repo_path, org, repo
-    raise FileNotFoundError(f"No git repository found under {failed_dir}")
+def discover_repo(base_path):
+    """Discover the repository path under the base failed build directory.
+    Returns the path to the actual repo (e.g., /home/github/build/failed/Org/repo)."""
+    for org_dir in os.listdir(base_path):
+        org_path = os.path.join(base_path, org_dir)
+        if os.path.isdir(org_path) and org_dir not in ('cacher',):
+            for repo_dir in os.listdir(org_path):
+                repo_path = os.path.join(org_path, repo_dir)
+                if os.path.isdir(repo_path) and os.path.isdir(os.path.join(repo_path, '.git')):
+                    return repo_path
+    return None
 
 
-def analyze_build_logs(build_dir: str) -> Dict:
-    """Analyze CI build log files to identify failure patterns.
-    
-    Args:
-        build_dir: Path to /home/github/build
-    Returns:
-        Dict with 'summary', 'errors', 'failing_tests', 'failing_envs'
-    """
-    result = {
-        'summary': '',
-        'errors': [],
-        'failing_tests': [],
-        'failing_envs': [],
-        'log_files': []
-    }
-    
-    log_files = glob.glob(os.path.join(build_dir, '*.log'))
-    result['log_files'] = log_files
-    
-    for log_file in log_files:
-        with open(log_file, 'r', errors='replace') as f:
-            content = f.read()
-        
-        # Find FAIL lines
-        for line in content.split('\n'):
-            if 'FAIL' in line and ('✖' in line or 'code 1' in line):
-                env_match = re.search(r'(py\d+):', line)
-                if env_match:
-                    result['failing_envs'].append(env_match.group(1))
-            
-            # Find assertion errors and test failures
-            if 'FAILED' in line and '::' in line:
-                result['failing_tests'].append(line.strip())
-            
-            # Find error lines with tracebacks
-            if 'Error' in line and ('assert' in line.lower() or 'error' in line.lower()):
-                result['errors'].append(line.strip())
-    
-    if result['failing_tests']:
-        result['summary'] = f"Tests failing: {', '.join(result['failing_tests'][:5])}"
-    elif result['errors']:
-        result['summary'] = f"Errors found: {result['errors'][0][:200]}"
-    else:
-        result['summary'] = 'No specific failure pattern identified from logs'
-    
-    return result
+def run_tox_env(repo_path, env_name, timeout=120):
+    """Run a specific tox environment and return (returncode, stdout, stderr)."""
+    try:
+        result = subprocess.run(
+            ['tox', '-e', env_name],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return -1, '', 'Timeout'
+    except Exception as e:
+        return -1, '', str(e)
 
 
-def find_source_files(repo_path: str, extensions: List[str] = None) -> List[str]:
-    """Find all Python source files in the repository.
-    
-    Args:
-        repo_path: Path to the repository root
-        extensions: File extensions to search for (default: ['.py'])
-    Returns:
-        List of file paths
-    """
-    if extensions is None:
-        extensions = ['.py']
-    
-    files = []
-    for ext in extensions:
-        for f in Path(repo_path).rglob(f'*{ext}'):
-            if '.git' not in str(f) and '__pycache__' not in str(f) and '.tox' not in str(f):
-                files.append(str(f))
-    return sorted(files)
+def get_tox_envlist(repo_path):
+    """Parse tox.ini to get the envlist."""
+    tox_ini = os.path.join(repo_path, 'tox.ini')
+    if not os.path.exists(tox_ini):
+        return []
+    envs = []
+    with open(tox_ini) as f:
+        in_tox_section = False
+        for line in f:
+            line = line.strip()
+            if line == '[tox]':
+                in_tox_section = True
+                continue
+            if line.startswith('[') and in_tox_section:
+                break
+            if in_tox_section and line.startswith('envlist'):
+                _, _, val = line.partition('=')
+                envs = [e.strip() for e in val.split(',') if e.strip()]
+    return envs
 
 
-def check_version_compat_issues(source_files: List[str]) -> List[Dict]:
-    """Check source files for Python version compatibility issues.
-    
-    Looks for constructs that are only available in newer Python versions:
-    - list[Type] (3.9+)
-    - dict[K,V] (3.9+)
-    - match statements (3.10+)
-    - walrus operator (3.8+)
-    
-    Args:
-        source_files: List of Python file paths to check
-    Returns:
-        List of dicts with 'file', 'line', 'issue', 'suggestion'
-    """
-    issues = []
-    
-    # Pattern for lowercase generic types used as type hints
-    # Matches: list[, dict[, tuple[, set[, type[ in type annotation context
-    lowercase_generic_pattern = re.compile(
-        r'(?::\s*|->\s*)(?:list|dict|tuple|set|type)\['
-    )
-    
-    for filepath in source_files:
+def get_available_pythons():
+    """Discover which Python versions are available on the system."""
+    available = {}
+    for minor in range(7, 13):
+        name = f'python3.{minor}'
         try:
-            with open(filepath, 'r') as f:
-                lines = f.readlines()
-        except (IOError, UnicodeDecodeError):
-            continue
-        
-        for i, line in enumerate(lines, 1):
-            # Check for lowercase generic types
-            if lowercase_generic_pattern.search(line):
-                issues.append({
-                    'file': filepath,
-                    'line': i,
-                    'issue': f'Lowercase generic type hint (Python 3.9+ only): {line.strip()}',
-                    'suggestion': 'Use typing.List, typing.Dict, etc. for Python 3.7/3.8 compatibility'
-                })
-    
-    return issues
+            result = subprocess.run([name, '--version'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                available[f'py3{minor}'] = name
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+    return available
 
 
-def write_analysis(output_path: str, logs: Dict, issues: List[Dict],
-                   additional_notes: str = '') -> None:
-    """Write the build failure analysis to a file.
-    
-    Args:
-        output_path: Path to write the analysis file
-        logs: Result from analyze_build_logs()
-        issues: Result from check_version_compat_issues()
-        additional_notes: Additional analysis notes
-    """
+def classify_error(stdout, stderr):
+    """Classify a build error from tox output into categories."""
+    combined = stdout + stderr
+    categories = []
+    if 'SyntaxError' in combined:
+        categories.append('syntax_error')
+    if 'ImportError' in combined or 'ModuleNotFoundError' in combined:
+        categories.append('import_error')
+    if 'TypeError' in combined:
+        categories.append('type_error')
+    if 'AttributeError' in combined:
+        categories.append('attribute_error')
+    if 'AssertionError' in combined or 'AssertionError' in combined:
+        categories.append('assertion_error')
+    if not categories:
+        categories.append('unknown')
+    return categories
+
+
+def analyze_build_failure(repo_path):
+    """Analyze a build failure by running tox environments and collecting errors."""
+    envs = get_tox_envlist(repo_path)
+    available = get_available_pythons()
+    results = {}
+    for env in envs:
+        if env in available or env in ('py310',):  # py310 maps to python3.10
+            rc, stdout, stderr = run_tox_env(repo_path, env)
+            results[env] = {
+                'returncode': rc,
+                'stdout': stdout,
+                'stderr': stderr,
+                'categories': classify_error(stdout, stderr) if rc != 0 else ['pass']
+            }
+    return {
+        'repo_path': repo_path,
+        'envs_tested': list(results.keys()),
+        'results': results,
+        'fixes': []  # To be populated by the caller after analysis
+    }
+
+
+def write_analysis(analysis_text, output_path):
+    """Write analysis text to the output file."""
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, 'w') as f:
-        f.write('## Build Failure Analysis\n\n')
-        f.write(f'### Summary\n{logs["summary"]}\n\n')
-        
-        if logs['failing_envs']:
-            f.write(f'### Failing Environments\n')
-            for env in logs['failing_envs']:
-                f.write(f'- {env}\n')
-            f.write('\n')
-        
-        if logs['failing_tests']:
-            f.write(f'### Failing Tests\n')
-            for test in logs['failing_tests']:
-                f.write(f'- {test}\n')
-            f.write('\n')
-        
-        if issues:
-            f.write('### Version Compatibility Issues\n')
-            for issue in issues:
-                f.write(f'- {issue["file"]}:{issue["line"]}: {issue["issue"]}\n')
-                f.write(f'  Suggestion: {issue["suggestion"]}\n')
-            f.write('\n')
-        
-        if additional_notes:
-            f.write(f'### Additional Notes\n{additional_notes}\n')
+        f.write(analysis_text)
 
 
-def create_patch_from_git_diff(repo_path: str, patch_number: int,
-                                specific_files: List[str] = None) -> str:
-    """Create a patch file from git diff.
+def generate_patch(repo_path, filepath, old_line, new_line):
+    """Generate a patch by making a change and capturing git diff.
     
     Args:
-        repo_path: Path to the repository root
-        patch_number: Patch number (for naming patch_N.diff)
-        specific_files: Optional list of specific files to diff
+        repo_path: Path to the git repository
+        filepath: Relative path to the file within the repo
+        old_line: The exact line content to replace
+        new_line: The replacement line content
+    
     Returns:
-        Path to the created patch file
+        str: The unified diff content
     """
-    patch_path = os.path.join(repo_path, f'patch_{patch_number}.diff')
+    full_path = os.path.join(repo_path, filepath)
+    with open(full_path) as f:
+        content = f.read()
     
-    cmd = ['git', 'diff']
-    if specific_files:
-        cmd.append('--')
-        cmd.extend(specific_files)
+    if old_line not in content:
+        raise ValueError(f"Could not find line to replace in {filepath}: {old_line!r}")
     
-    result = subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True)
-    
-    with open(patch_path, 'w') as f:
-        f.write(result.stdout)
-    
-    return patch_path
-
-
-def verify_patch_applies(repo_path: str, patch_number: int) -> bool:
-    """Verify a patch file can be applied cleanly.
-    
-    Args:
-        repo_path: Path to the repository root
-        patch_number: Patch number
-    Returns:
-        True if patch applies cleanly
-    """
-    patch_path = os.path.join(repo_path, f'patch_{patch_number}.diff')
-    
-    # First revert changes
-    subprocess.run(['git', 'checkout', '.'], cwd=repo_path, capture_output=True)
-    
-    # Try to apply
-    result = subprocess.run(
-        ['git', 'apply', '--check', patch_path],
-        cwd=repo_path, capture_output=True, text=True
-    )
-    
-    if result.returncode == 0:
-        # Actually apply it
-        subprocess.run(['git', 'apply', patch_path], cwd=repo_path, capture_output=True)
-        return True
-    else:
-        print(f"Patch verification failed: {result.stderr}")
-        return False
-
-
-def run_tests(repo_path: str, test_cmd: str = None) -> Tuple[bool, str]:
-    """Run the test suite and return results.
-    
-    Args:
-        repo_path: Path to the repository root
-        test_cmd: Custom test command (default: python3 -m pytest tests/ -v)
-    Returns:
-        Tuple of (success, output)
-    """
-    if test_cmd is None:
-        test_cmd = 'python3 -m pytest tests/ -v'
+    new_content = content.replace(old_line, new_line, 1)
+    with open(full_path, 'w') as f:
+        f.write(new_content)
     
     result = subprocess.run(
-        test_cmd.split(),
+        ['git', 'diff', '--', filepath],
         cwd=repo_path,
         capture_output=True,
-        text=True,
-        timeout=120
+        text=True
     )
+    return result.stdout
+
+
+def apply_patches(repo_path):
+    """Apply all patch_*.diff files in the repo directory."""
+    patch_files = sorted(glob.glob(os.path.join(repo_path, 'patch_*.diff')))
+    results = []
+    for pf in patch_files:
+        # Check if already applied by trying reverse
+        check = subprocess.run(
+            ['git', 'apply', '--check', '--reverse', pf],
+            cwd=repo_path,
+            capture_output=True,
+            text=True
+        )
+        if check.returncode == 0:
+            results.append((pf, 'already_applied'))
+            continue
+        
+        result = subprocess.run(
+            ['git', 'apply', pf],
+            cwd=repo_path,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            results.append((pf, 'applied'))
+        else:
+            results.append((pf, f'failed: {result.stderr}'))
+    return results
+
+
+def validate_outputs(repo_path, analysis_path):
+    """Validate that all required output artifacts exist."""
+    errors = []
+    if not os.path.exists(analysis_path):
+        errors.append(f'Missing analysis file: {analysis_path}')
     
-    output = result.stdout + result.stderr
-    success = result.returncode == 0
+    patch_files = glob.glob(os.path.join(repo_path, 'patch_*.diff'))
+    if not patch_files:
+        errors.append(f'No patch files found in {repo_path}')
     
-    return success, output
+    for pf in patch_files:
+        with open(pf) as f:
+            content = f.read()
+        if not content.strip():
+            errors.append(f'Empty patch file: {pf}')
+        if '---' not in content or '+++' not in content:
+            errors.append(f'Malformed patch file (missing headers): {pf}')
+        if '@@' not in content:
+            errors.append(f'Malformed patch file (missing hunk headers): {pf}')
+    
+    # Verify changes are applied to source
+    result = subprocess.run(
+        ['git', 'diff', '--stat'],
+        cwd=repo_path,
+        capture_output=True,
+        text=True
+    )
+    if not result.stdout.strip():
+        errors.append('No changes detected in repository - patches may not be applied')
+    
+    if errors:
+        raise ValueError('Validation errors:\n' + '\n'.join(errors))
+    
+    return True

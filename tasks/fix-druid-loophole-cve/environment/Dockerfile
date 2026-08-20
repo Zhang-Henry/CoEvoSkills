@@ -34,11 +34,16 @@ RUN mkdir -p ${DRUID_HOME} && \
 # Create workspace directory
 RUN mkdir -p ${WORKSPACE}/patches ${WORKSPACE}/druid
 
-# Clone Druid source code for the agent to analyze and patch
+# Fetch exactly the vulnerable release. A full clone exposes later commits,
+# including the upstream security fix, through local Git history. Use a
+# single-commit clone while resolving dependencies, then strip every route to
+# later history while retaining the one baseline commit required by the task's
+# normal Git-based repair workflow.
 RUN cd ${WORKSPACE} && \
-    git clone https://github.com/apache/druid.git && \
-    cd druid && \
-    git checkout druid-0.20.0
+    git clone --depth 1 --single-branch --branch druid-0.20.0 \
+        https://github.com/apache/druid.git druid && \
+    test "$(git -C druid rev-parse HEAD)" = "acdc6ee7ea3a81fb3e70b92d7cc682921f988eb5" && \
+    test "$(git -C druid rev-list --count HEAD)" = "1"
 
 # Fix Maven dependency issue with apache-jar-resource-bundle
 # This is a known issue with Druid 0.20.0 builds
@@ -60,6 +65,22 @@ POMEOF
 # Verify Maven can now resolve dependencies for indexing-service module
 RUN cd ${WORKSPACE}/druid && \
     mvn dependency:resolve -DskipTests -pl indexing-service -am || echo "Some dependencies may be missing but we'll continue"
+
+# Preserve normal Git repair workflows without retaining a route to upstream
+# history. The only reachable object is the pinned vulnerable baseline: no
+# remote, tags, remote refs, or reflog entries survive in the agent image.
+RUN cd ${WORKSPACE}/druid && \
+    git switch -c vulnerable-baseline && \
+    git remote remove origin && \
+    for tag in $(git tag --list); do git tag --delete "$tag"; done && \
+    for ref in $(git for-each-ref --format='%(refname)' refs/remotes); do \
+        git update-ref -d "$ref"; \
+    done && \
+    git reflog expire --expire=now --all && \
+    git gc --prune=now && \
+    test "$(git rev-list --all --count)" = "1" && \
+    test -z "$(git remote)" && \
+    test -z "$(git for-each-ref --format='%(refname)' refs/tags refs/remotes)"
 
 
 # Set working directory

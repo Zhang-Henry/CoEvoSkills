@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /srv
+COPY hvac_service.py /srv/hvac_service.py
+COPY room_config.json /srv/room_config.json
+
+USER nobody
+EXPOSE 8080
+CMD ["python3", "/srv/hvac_service.py"]

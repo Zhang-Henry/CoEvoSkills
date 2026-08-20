@@ -1,58 +1,49 @@
-#!/usr/bin/env python3
-"""Calculate PID controller gains from estimated parameters."""
+"""
+PID controller gain tuning using IMC (Internal Model Control) method.
+For a first-order system: G(s) = K / (tau*s + 1)
+IMC tuning with filter constant lambda gives:
+  Kp = tau / (K * lambda)
+  Ki = Kp / tau = 1 / (K * lambda)
+  Kd = 0 (for first-order systems)
+"""
 import json
 
-def calculate_gains(params_path="/root/estimated_params.json",
-                    output_path="/root/tuned_gains.json",
-                    lambda_factor=None):
-    """Calculate PID gains using Lambda tuning (IMC-based).
-    
-    For a first-order system with gain K and time constant tau:
-    Lambda tuning gives:
-        Kp = tau / (K * lambda)
-        Ki = Kp / tau  (or equivalently 1/(K*lambda))
-        Kd = 0 (first order, no derivative needed)
-    
-    where lambda is the desired closed-loop time constant.
+
+def compute_gains(K, tau, lambda_factor=None):
+    """
+    Compute PID gains using IMC tuning.
     
     Args:
-        params_path: path to estimated_params.json
-        output_path: where to write tuned_gains.json
-        lambda_factor: desired closed-loop time constant (None = auto)
+        K: process gain (C per % power)
+        tau: time constant (seconds)
+        lambda_factor: closed-loop time constant. If None, uses tau/2 for moderate response.
     
     Returns:
         dict with Kp, Ki, Kd, lambda
     """
-    with open(params_path, 'r') as f:
-        params = json.load(f)
-    
-    K = params["K"]
-    tau = params["tau"]
-    
-    # Choose lambda for good performance without excessive overshoot
-    # lambda ~ tau gives moderate response
-    # Smaller lambda = faster but more aggressive
     if lambda_factor is None:
-        lambda_factor = tau * 0.8  # slightly aggressive for fast settling
+        # Choose lambda for good balance of speed and stability
+        # Smaller lambda = faster but more aggressive
+        # For settling time < 120s, we need reasonably fast response
+        lambda_factor = max(tau * 0.5, 5.0)
     
-    # IMC/Lambda tuning for first-order system
+    # IMC tuning for first-order system
     Kp = tau / (K * lambda_factor)
-    Ki = Kp / tau  # integral gain = 1/(K*lambda)
-    Kd = 0.0  # no derivative for first-order + noisy measurements
+    Ki = Kp / tau  # = 1 / (K * lambda_factor)
+    Kd = 0.0
     
-    result = {
+    gains = {
         "Kp": round(float(Kp), 4),
         "Ki": round(float(Ki), 4),
         "Kd": round(float(Kd), 4),
         "lambda": round(float(lambda_factor), 4)
     }
     
-    with open(output_path, 'w') as f:
-        json.dump(result, f, indent=2)
-    
-    print(f"Tuned gains: Kp={result['Kp']}, Ki={result['Ki']}, Kd={result['Kd']}")
-    print(f"Lambda={result['lambda']}")
-    return result
+    return gains
 
-if __name__ == "__main__":
-    calculate_gains()
+
+def save_tuned_gains(gains, path="/root/tuned_gains.json"):
+    """Save tuned gains to JSON file."""
+    with open(path, 'w') as f:
+        json.dump(gains, f, indent=2)
+    return path

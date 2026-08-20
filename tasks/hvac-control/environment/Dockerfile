@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /root
 
-# Copy simulator and configuration
+# The thermal plant itself runs in the isolated simulator sidecar.  This image
+# contains only the public Python client and operating configuration.
 COPY hvac_simulator.py /root/hvac_simulator.py
 COPY room_config.json /root/room_config.json
 

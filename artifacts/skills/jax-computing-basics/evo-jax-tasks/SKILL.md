@@ -1,35 +1,38 @@
 ---
 name: evo-jax-tasks
-description: "I/O utilities for JAX task solving: load data, run manifests, validate outputs. Caller supplies the solver function."
+description: "Solve JAX numerical computing tasks from a problem.json manifest. Handles reductions, vmap, grad, scan, and jit tasks."
 ---
 
-# JAX Task I/O Utilities
+# JAX Task Solver Skill
+
+This skill solves sets of JAX programming tasks specified in a problem.json manifest.
+
+## Supported Task Types
+
+- **basic_reduce**: Row-wise mean reduction
+- **map_square**: Element-wise squaring via vmap
+- **grad_logistic**: Gradient of logistic loss via jax.grad
+- **scan_rnn**: RNN forward pass via jax.lax.scan
+- **jit_mlp**: JIT-compiled 2-layer MLP forward pass
+
+## Usage
 
 ```python
-import sys, os
+import sys
 sys.path.insert(0, '/app/environment/skills/evo-jax-tasks/scripts')
-from io_utils import load_input, run_manifest, validate_manifest
-import jax.numpy as jnp
-from jax import vmap
-import numpy as np
+from utils import run_all_tasks, validate_outputs
 
-# Define solver based on your task descriptions
-def solver(desc, data):
-    # Parse description and compute result using JAX
-    # This is task-specific logic supplied by the caller
-    pass
+# Run all tasks
+run_all_tasks('/app/problem.json', '/app')
 
-# Run
-manifest = os.path.join(os.getcwd(), 'problem.json')
-if os.path.exists(manifest):
-    run_manifest(manifest, solver)
-    assert validate_manifest(manifest, solver)
+# Validate outputs
+validate_outputs('/app/problem.json', '/app')
 ```
 
-## API
+## Individual Task Functions
 
-- `load_input(path)` — Load .npy/.npz to dict
-- `load_manifest(path)` — Load JSON manifest
-- `save_result(result, path)` — Save array to .npy
-- `run_manifest(path, solver_fn)` — Iterate manifest, call solver, save
-- `validate_manifest(path, solver_fn)` — Re-execute, compare
+Each task function takes (input_path, output_path) and returns the JAX result:
+
+```python
+from utils import task_basic_reduce, task_map_square, task_grad_logistic, task_scan_rnn, task_jit_mlp
+```

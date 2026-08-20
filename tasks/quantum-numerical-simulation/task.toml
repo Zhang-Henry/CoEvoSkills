@@ -21,8 +21,7 @@ timeout_sec = 1800.0
 timeout_sec = 7200.0
 
 [environment]
-# Allow time for qutip compilation and precomputation of the four reference
-# Wigner arrays during the image build.
+# Allow time for qutip compilation during the image build.
 build_timeout_sec = 1800.0
 cpus = 4
 memory_mb = 10240

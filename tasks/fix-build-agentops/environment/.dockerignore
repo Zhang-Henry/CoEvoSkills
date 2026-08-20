@@ -1,0 +1,9 @@
+# This task is entirely based on its pinned BugSwarm image. Do not let local
+# artifacts enter the agent image through a future broad COPY instruction.
+*
+!Dockerfile
+!assert_isolation.sh
+!doc/
+!doc/**
+!skills/
+!skills/**

@@ -1,4 +1,0 @@
-task	release_status	outcome	reward	tests_passed	tests_total	skill_used	oracle_backend	note
-fix-build-agentops	validated_skill_only_full_score	full_score	1.0	3	3	false	claude-code-subscription	Only the evolved Skill was available; the fresh Agent completed the task without an explicit native Skill invocation, so Skill necessity is not claimed.
-simpo-code-reproduction	validated_skill_only_full_score	full_score	1.0	1	1	true	claude-code-subscription	Fresh Skill-only Oracle passed on the first GT iteration.
-virtualhome-agent-planning	validated_skill_only_full_score	full_score	1.0	2	2	true	claude-code-vertex	Fresh Skill-only Oracle improved from 1/2 to 2/2 after evolution feedback.

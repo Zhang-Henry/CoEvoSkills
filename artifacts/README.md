@@ -14,15 +14,18 @@ document to the evaluation Agent.
 in a fresh Skill-only evaluation from retained candidates that did not satisfy
 the finalization gate. Candidate artifacts are included so every evolution
 attempt can be inspected and rerun; they are not reported as successful tasks.
+The current manifest contains 62 validated Skills (62/85, or 72.9%) and 23
+candidate Skills.
 
-`evaluations/` contains trace-free result summaries that are safe to publish.
-Raw Agent conversations and Docker task sandboxes are not release artifacts.
-The evidence tables collectively include at least one canonical full-score,
-fresh Skill-only result for every Skill marked as validated. The historical
-backfill table also records current Skill-tree and background-document hashes so
-the older formal sweep remains tied to the exact released artifacts. One legacy
-verifier emitted a canonical reward and per-case stdout rather than CTRF; its
-row identifies that evidence format explicitly instead of implying a CTRF file.
+`evaluations/release-skill-only-results.tsv` is the sole public result table.
+It contains exactly one row for each currently validated Skill. Every row
+records canonical reward `1.0` from a fresh Claude Code Opus 4.6 Skill-only
+evaluation, confirms that no background document was available, and pins the
+current release Skill and background-document trees by SHA-256. Candidate
+statuses remain available in `skill_status.tsv` but are not included in the
+result table. The test counts distinguish passed checks from checks skipped as
+inapplicable; no finalized row contains a failed check. Raw Agent conversations
+and Docker task sandboxes are not release artifacts.
 
 During a run, `scripts/prepare_tasks.py` copies the selected release material
 to `workspaces/<RUN_ID>/<condition>/`. Evolution may modify that workspace. A

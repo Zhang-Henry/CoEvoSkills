@@ -1,91 +1,89 @@
-#!/usr/bin/env python3
-"""Estimate system parameters K and tau from calibration data."""
+"""
+System parameter estimation from calibration data.
+Fits first-order model: T(t) = T_ss - (T_ss - T0) * exp(-t/tau)
+where T_ss = T_ambient + K * u
+"""
 import json
 import numpy as np
 from scipy.optimize import curve_fit
 
-def estimate_parameters(calibration_path="/root/calibration_log.json",
-                        output_path="/root/estimated_params.json"):
-    """Estimate K and tau from calibration data using curve fitting.
+
+def first_order_response(t, T0, K_u, tau):
+    """
+    First-order step response.
+    T(t) = T0 + K_u * (1 - exp(-t/tau))
+    where K_u = K * heater_power (the total steady-state rise)
+    """
+    return T0 + K_u * (1.0 - np.exp(-t / tau))
+
+
+def estimate_params(calibration_log, ambient_temp=18.0):
+    """
+    Estimate K and tau from calibration data.
     
-    The model is: T(t) = T_ss - (T_ss - T0) * exp(-t/tau)
-    where T_ss = K*u + T_ambient
+    The thermal model is: dT/dt = (1/tau) * (K*u + T_ambient - T)
+    At steady state: T_ss = T_ambient + K*u
+    Step response from T0: T(t) = T_ss - (T_ss - T0)*exp(-t/tau)
+    Which equals: T(t) = T0 + (T_ss - T0)*(1 - exp(-t/tau))
     
     Args:
-        calibration_path: path to calibration_log.json
-        output_path: where to write estimated_params.json
+        calibration_log: dict with calibration data
+        ambient_temp: ambient temperature
     
     Returns:
-        dict with estimated K, tau, r_squared, fitting_error
+        dict with estimated parameters
     """
-    with open(calibration_path, 'r') as f:
-        cal = json.load(f)
-    
-    data = cal["data"]
-    test_power = cal["heater_power_test"]
+    data = calibration_log["data"]
+    heater_power = calibration_log["heater_power_test"]
     
     times = np.array([d["time"] for d in data])
     temps = np.array([d["temperature"] for d in data])
     
-    # Initial temperature (average of first few readings)
-    T0 = temps[0]
-    
-    # For fitting, we need T_ambient. It's the initial temperature (before heating)
-    # From the simulator: T_ambient = 18.0 (config), but we estimate from data
-    T_ambient = T0  # approximate
-    
-    # Model: T(t) = (K*u + T_ambient) - (K*u + T_ambient - T0) * exp(-t/tau)
-    # Simplify: T(t) = T_ss - (T_ss - T0) * exp(-t/tau)
-    # where T_ss = K*u + T_ambient
-    # Parameters to fit: T_ss and tau
-    
-    def first_order_response(t, T_ss, tau):
-        return T_ss - (T_ss - T0) * np.exp(-t / tau)
+    T0_measured = temps[0]
     
     # Initial guesses
-    T_final = np.mean(temps[-10:])  # average of last readings
-    p0 = [T_final, 30.0]
+    T_final = temps[-1]
+    K_u_guess = T_final - T0_measured
+    tau_guess = 20.0
     
     try:
-        popt, pcov = curve_fit(first_order_response, times, temps, p0=p0,
-                               bounds=([T0, 1.0], [50.0, 200.0]),
-                               maxfev=10000)
-        T_ss_est, tau_est = popt
-        
-        # Calculate K from T_ss = K*u + T_ambient
-        K_est = (T_ss_est - T_ambient) / test_power
-        
-        # Calculate R-squared
-        predicted = first_order_response(times, *popt)
-        ss_res = np.sum((temps - predicted) ** 2)
-        ss_tot = np.sum((temps - np.mean(temps)) ** 2)
-        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
-        
-        # RMSE
-        fitting_error = np.sqrt(np.mean((temps - predicted) ** 2))
-        
+        popt, pcov = curve_fit(
+            first_order_response,
+            times, temps,
+            p0=[T0_measured, K_u_guess, tau_guess],
+            bounds=([T0_measured - 5, 0.01, 1.0], [T0_measured + 5, 50.0, 200.0]),
+            maxfev=10000
+        )
+        T0_fit, K_u_fit, tau_fit = popt
     except Exception as e:
-        print(f"Curve fitting failed: {e}")
-        # Fallback: simple estimation
-        T_final = np.mean(temps[-10:])
-        K_est = (T_final - T_ambient) / test_power
-        tau_est = 40.0
-        r_squared = 0.5
-        fitting_error = 1.0
+        print(f"Curve fit failed: {e}, using fallback")
+        T0_fit = T0_measured
+        K_u_fit = K_u_guess if K_u_guess > 0 else 1.0
+        tau_fit = tau_guess
     
-    result = {
-        "K": round(float(K_est), 6),
-        "tau": round(float(tau_est), 4),
-        "r_squared": round(float(r_squared), 4),
-        "fitting_error": round(float(fitting_error), 4)
+    # K = K_u / heater_power
+    K = K_u_fit / heater_power if heater_power > 0 else 0.1
+    
+    # Compute R-squared
+    T_pred = first_order_response(times, T0_fit, K_u_fit, tau_fit)
+    ss_res = np.sum((temps - T_pred) ** 2)
+    ss_tot = np.sum((temps - np.mean(temps)) ** 2)
+    r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    
+    fitting_error = np.sqrt(np.mean((temps - T_pred) ** 2))
+    
+    params = {
+        "K": round(float(K), 6),
+        "tau": round(float(tau_fit), 4),
+        "r_squared": round(float(r_squared), 6),
+        "fitting_error": round(float(fitting_error), 6)
     }
     
-    with open(output_path, 'w') as f:
-        json.dump(result, f, indent=2)
-    
-    print(f"Estimated K={result['K']}, tau={result['tau']}")
-    print(f"R²={result['r_squared']}, RMSE={result['fitting_error']}")
-    return result
+    return params
 
-if __name__ == "__main__":
-    estimate_parameters()
+
+def save_estimated_params(params, path="/root/estimated_params.json"):
+    """Save estimated parameters to JSON file."""
+    with open(path, 'w') as f:
+        json.dump(params, f, indent=2)
+    return path

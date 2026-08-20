@@ -10,8 +10,113 @@ This test sends multiple exploit payloads and verifies they are all blocked.
 """
 
 import os
+import secrets
 import subprocess
 from pathlib import Path
+
+
+def _response_body(response):
+    """Return response text plus any JSON body in a stable, searchable form."""
+    text = response.text or ""
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        payload = None
+    return text, payload
+
+
+def _assert_successful_sample(response, expected_value):
+    """Require a real sampler result, not merely the absence of an error word."""
+    text, payload = _response_body(response)
+
+    assert response.status_code == 200, (
+        "A legitimate sampler request must succeed with HTTP 200; "
+        f"got {response.status_code}: {text[:300]}"
+    )
+    assert isinstance(payload, dict), (
+        "A legitimate sampler request must return a JSON object; "
+        f"got: {text[:300]}"
+    )
+    assert payload.get("numRowsRead") == 1, (
+        "Sampler did not read the single legitimate input row: "
+        f"{payload}"
+    )
+    assert payload.get("numRowsIndexed") == 1, (
+        "Sampler did not index the single legitimate input row: "
+        f"{payload}"
+    )
+
+    rows = payload.get("data")
+    assert isinstance(rows, list) and len(rows) == 1, (
+        "Sampler must return exactly one result row for the one-row control input: "
+        f"{payload}"
+    )
+    row = rows[0]
+    assert isinstance(row, dict), f"Sampler result row is malformed: {row!r}"
+    assert row.get("unparseable") in (None, False), (
+        f"Legitimate control row was marked unparseable: {row}"
+    )
+    assert not row.get("error"), f"Legitimate control row returned an error: {row}"
+
+    input_row = row.get("input")
+    parsed_row = row.get("parsed")
+    assert isinstance(input_row, dict) and input_row.get("value") == expected_value, (
+        "Sampler response did not preserve the control value in the input row: "
+        f"{row}"
+    )
+    assert isinstance(parsed_row, dict) and parsed_row.get("value") == expected_value, (
+        "Sampler response did not preserve the control value in the parsed row: "
+        f"{row}"
+    )
+
+
+def _assert_explicit_exploit_rejection(response, payload_info):
+    """Require an explicit security rejection, not a generic broken endpoint."""
+    text, payload = _response_body(response)
+    normalized = text.lower()
+
+    assert 400 <= response.status_code < 600, (
+        f"Exploit {payload_info['name']} was not rejected with an error status; "
+        f"got {response.status_code}: {text[:300]}"
+    )
+
+    # Druid 0.20 may map the thrown validation exception to either a 4xx or a
+    # 5xx response. In both cases the body must say why this request was
+    # rejected. Generic service failures are not evidence of a security fix.
+    rejection_markers = (
+        "javascript is disabled",
+        "javascript disabled",
+        "javascript is not enabled",
+        "javascript not enabled",
+        "empty key",
+        "invalid request",
+        "not allowed",
+        "forbidden",
+        "rejected",
+        "cve-2021-25646",
+    )
+    assert any(marker in normalized for marker in rejection_markers), (
+        f"Exploit {payload_info['name']} failed only generically rather than "
+        f"being explicitly rejected: status={response.status_code}, body={text[:300]}"
+    )
+
+    if isinstance(payload, dict):
+        assert not (
+            payload.get("numRowsRead") == 1
+            and payload.get("numRowsIndexed") == 1
+            and payload.get("data")
+        ), (
+            f"Exploit {payload_info['name']} returned a successful sampler result: "
+            f"{payload}"
+        )
+
+    # A non-2xx response with an explicit security explanation is the protocol
+    # signal. Avoid ambiguous output words such as "root", which can occur in
+    # harmless server paths or generated error pages. The separate randomized
+    # filesystem probe below verifies that JavaScript did not execute at all.
+    assert "uid=" not in normalized and "gid=" not in normalized, (
+        f"Exploit {payload_info['name']} exposed process identity output: {text[:300]}"
+    )
 
 
 def test_patches_exist():
@@ -130,6 +235,22 @@ def get_exploit_payloads():
         )
     })
 
+    # Payload 7: a randomized out-of-band side effect. This catches an
+    # implementation that executes JavaScript and then fabricates an error
+    # response containing a security-looking message.
+    side_effect_path = f"/tmp/druid-cve-probe-{secrets.token_hex(12)}"
+    payloads.append({
+        "name": "filesystem_side_effect_probe",
+        "description": "Create a verifier-randomized file via Runtime.exec()",
+        "rce_indicator": None,
+        "side_effect_path": side_effect_path,
+        "js_function": (
+            "function(){java.lang.Runtime.getRuntime().exec("
+            f"['sh','-c','touch {side_effect_path}']"
+            ");return {timestamp:123123,test:'completed'}}"
+        )
+    })
+
     return payloads
 
 
@@ -187,6 +308,10 @@ def test_legitimate_requests_still_work():
     druid_host = os.getenv("DRUID_HOST", "localhost")
     druid_port = int(os.getenv("DRUID_PORT", "8888"))
 
+    # Use a verifier-generated value so a hard-coded or synthetic success
+    # response cannot satisfy the functional control.
+    control_value = f"control-{secrets.token_hex(8)}"
+
     # Legitimate request with JSON parser (no JavaScript)
     legitimate_payload = {
         "type": "index",
@@ -196,7 +321,11 @@ def test_legitimate_requests_still_work():
                 "type": "index",
                 "inputSource": {
                     "type": "inline",
-                    "data": '{"timestamp":"2021-01-01T00:00:00Z","value":"test"}'
+                    "data": (
+                        '{"timestamp":"2021-01-01T00:00:00Z","value":"'
+                        + control_value
+                        + '"}'
+                    )
                 },
                 "inputFormat": {
                     "type": "json"
@@ -229,23 +358,12 @@ def test_legitimate_requests_still_work():
             timeout=20
         )
 
-        response_text = response.text.lower()
+        _assert_successful_sample(response, control_value)
 
-        # Check if it was incorrectly blocked as JavaScript
-        incorrectly_blocked = (
-            "javascript" in response_text and (
-                "disabled" in response_text or
-                "not allowed" in response_text or
-                "blocked" in response_text
-            )
+        print(
+            "✓ Legitimate request produced the expected semantic sampler result "
+            f"(status: {response.status_code})"
         )
-
-        assert not incorrectly_blocked, (
-            f"Legitimate request was incorrectly blocked as JavaScript! "
-            f"Status: {response.status_code}, Response: {response.text[:300]}"
-        )
-
-        print(f"✓ Legitimate request handled correctly (status: {response.status_code})")
 
     except requests.exceptions.ConnectionError:
         assert False, (
@@ -280,6 +398,9 @@ def test_cve_2021_25646_exploits_blocked():
 
         for payload_info in exploit_payloads:
             exploit_request = build_exploit_request(payload_info["js_function"])
+            side_effect_path = payload_info.get("side_effect_path")
+            if side_effect_path:
+                Path(side_effect_path).unlink(missing_ok=True)
 
             try:
                 response = requests.post(
@@ -289,59 +410,19 @@ def test_cve_2021_25646_exploits_blocked():
                     timeout=20
                 )
 
-                response_text = response.text.lower()
-
-                # Check if exploit succeeded (RCE evidence)
-                rce_succeeded = False
-                if response.status_code == 200:
-                    # Check for specific RCE indicator if provided
-                    if payload_info["rce_indicator"]:
-                        if payload_info["rce_indicator"].lower() in response_text:
-                            rce_succeeded = True
-
-                    # Also check for generic RCE indicators
-                    if "uid=" in response_text or "gid=" in response_text:
-                        rce_succeeded = True
-
-                if rce_succeeded:
+                try:
+                    _assert_explicit_exploit_rejection(response, payload_info)
+                    if side_effect_path:
+                        assert not Path(side_effect_path).exists(), (
+                            f"Exploit {payload_info['name']} executed JavaScript and "
+                            f"created its randomized side-effect marker"
+                        )
+                    blocked_exploits.append(payload_info["name"])
+                except AssertionError as exc:
                     failed_exploits.append({
                         "name": payload_info["name"],
-                        "reason": f"RCE SUCCEEDED! Output found in response: {response.text[:200]}"
+                        "reason": str(exc),
                     })
-                    continue
-
-                # Check if properly blocked
-                is_blocked = (
-                    response.status_code >= 400 or
-                    "disabled" in response_text or
-                    "not enabled" in response_text or
-                    "security" in response_text or
-                    "forbidden" in response_text or
-                    "exception" in response_text or
-                    "error" in response_text or
-                    "not allowed" in response_text or
-                    "rejected" in response_text or
-                    "cve-2021-25646" in response_text or
-                    "illegal" in response_text
-                )
-
-                # Check if request succeeded with data (JS was enabled)
-                returned_data = (
-                    response.status_code == 200 and
-                    "numrowsread" in response_text and
-                    "data" in response_text
-                )
-
-                if returned_data and not is_blocked:
-                    failed_exploits.append({
-                        "name": payload_info["name"],
-                        "reason": f"Request succeeded (status 200). JavaScript was enabled via empty key. Response: {response.text[:150]}"
-                    })
-                elif is_blocked:
-                    blocked_exploits.append(payload_info["name"])
-                else:
-                    # Unclear - treat as potentially blocked
-                    blocked_exploits.append(payload_info["name"])
 
             except requests.exceptions.Timeout:
                 failed_exploits.append({

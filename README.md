@@ -90,7 +90,7 @@ run-specific task copies, and `outputs/` contains run-specific evidence.
 | `artifacts/background_docs/` | One answer-free domain reference set per task in the bundled release. These documents are available during evolution only. |
 | `artifacts/skills/` | The immutable, schema-valid Skill package bundled for each task. Do not use this directory as an evolution workspace. |
 | `artifacts/skill_status.tsv` | Whether each bundled Skill obtained canonical reward `1.0` in a fresh Skill-only run or remains a candidate. |
-| `artifacts/evaluations/` | Trace-free summaries from published Skill-only transfer evaluations. |
+| `artifacts/evaluations/release-skill-only-results.tsv` | The canonical, trace-free result table for the current finalized Skills. |
 | `libs/terminus_agent/` | Skill Generator, Surrogate Verifier, and fresh Skill-only Agent implementations. |
 | `meta_skills/skill-creator/` | The Skill package format and authoring rules supplied to the evolution Agent. |
 | `scripts/prepare_tasks.py` | Creates an isolated evolution or Skill-only copy of selected tasks. The bundled originals are not modified. |
@@ -260,10 +260,12 @@ GT_ORACLE_AGENT=claude-code-skill-only \
   scripts/run_condition.sh evolution --only-tasks 3d-scan-calc
 ```
 
-### 4. Reproduce the 64 finalized Skill-only evaluations
+### 4. Reproduce the 62 finalized Skill-only evaluations
 
-`--skill-set validated` resolves to the 64
-`validated_skill_only_full_score` rows in `artifacts/skill_status.tsv`.
+`--skill-set validated` resolves to the 62
+`validated_skill_only_full_score` rows in `artifacts/skill_status.tsv` (62/85,
+or 72.9%). The remaining 23 Agent-generated Skills are retained as candidates
+and are excluded from the finalized score.
 
 ```bash
 export RUN_ID=skill-only-reproduction

@@ -3,8 +3,90 @@ ARG bugswarm_image_tag=AgentOps-AI-agentops-24579293289
 FROM bugswarm/cached-images:${bugswarm_image_tag}
 
 USER root
-# remove passed version to avoid chatting
-RUN rm -rf /home/github/build/passed /usr/local/bin/run_passed.sh
+# Keep only the failing artifact that defines the repair task. BugSwarm's base
+# image also contains the paired passing checkout and both run logs; those are
+# an answer-equivalent oracle because their diff reveals the successful fix.
+# The verifier injects its own run_passed.sh, so none of these files are needed
+# by the agent at runtime.
+RUN set -eux; \
+    rm -rf /home/github/build/passed; \
+    rm -rf /home/github/24653510459; \
+    rm -f /usr/local/bin/run_passed.sh; \
+    find /home/github/build -maxdepth 1 -type f -name '*-orig.log' -delete; \
+    find /home/github -maxdepth 3 \
+        \( -iname '*passed*log*' -o -iname '*passing*log*' \) \
+        -type f -delete; \
+    test ! -e /home/github/build/passed; \
+    test -z "$(find /home/github/build -maxdepth 1 -type f -name '*-orig.log' -print -quit)"; \
+    test ! -e /usr/local/bin/run_passed.sh
+
+# The failing checkout in the BugSwarm image is a normal full clone: its
+# local object database contains hundreds of historical commits, branches,
+# and tags.  Even after deleting the paired passing checkout, those objects
+# let an agent inspect later source states and can expose the repair. Preserve
+# the failing working tree byte-for-byte, but replace its Git database with a
+# deterministic, single-root baseline commit and no upstream references.
+RUN set -eux; \
+    repo=/home/github/build/failed/AgentOps-AI/agentops; \
+    expected_tree=ddf27539541861da67ccdb629ae68bd39bff9ee7; \
+    test "$(git -C "$repo" rev-parse HEAD^{tree})" = "$expected_tree"; \
+    test -z "$(git -C "$repo" status --porcelain=v1 --untracked-files=all)"; \
+    rm -rf "$repo/.git"; \
+    git -C "$repo" init -q -b main; \
+    git -C "$repo" config core.logAllRefUpdates false; \
+    git -C "$repo" add -A; \
+    GIT_AUTHOR_DATE=2000-01-01T00:00:00Z \
+    GIT_COMMITTER_DATE=2000-01-01T00:00:00Z \
+        git -C "$repo" \
+        -c user.name='CoEvoSkills benchmark' \
+        -c user.email='benchmark@invalid' \
+        commit -q -m 'Pinned failing baseline'; \
+    rm -rf "$repo/.git/logs"; \
+    git -C "$repo" gc --prune=now; \
+    chown -R github:github "$repo/.git"; \
+    test "$(git -C "$repo" rev-parse HEAD^{tree})" = "$expected_tree"
+
+# BugSwarm's failed-job runner embeds the original CI run number in both a
+# top-level directory name and every action path. It also repeats the upstream
+# source SHA in each emulated GitHub Actions environment. Those identifiers are
+# not needed to reproduce the failing build and provide a direct lookup key for
+# this task instance. Move the action bundle to a neutral path, make the runner
+# report the synthetic one-root baseline commit created above, and replace the
+# original push event with the minimal context needed by setup-python.
+RUN set -eux; \
+    repo=/home/github/build/failed/AgentOps-AI/agentops; \
+    runner=/usr/local/bin/run_failed.sh; \
+    action_dirs="$(find /home/github -regextype posix-extended \
+        -mindepth 1 -maxdepth 1 -type d -regex '/home/github/[0-9]+')"; \
+    test -n "$action_dirs"; \
+    test "$(printf '%s\n' "$action_dirs" | wc -l)" -eq 1; \
+    action_src="$action_dirs"; \
+    old_run_id="${action_src##*/}"; \
+    mv "$action_src" /home/github/ci-runtime; \
+    sed -i \
+        -e "s#${old_run_id}#ci-runtime#g" \
+        -e 's/fix-crash-endtimestamp/task-baseline/g' \
+        "$runner"; \
+    sed -i -E \
+        -e 's/GITHUB_SHA=[0-9a-f]{40}/GITHUB_SHA=$TASK_SOURCE_SHA/g' \
+        "$runner"; \
+    sed -i '2a export TASK_SOURCE_SHA="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"' \
+        "$runner"; \
+    python3 -c 'import json; p="/home/github/ci-runtime/event.json"; json.dump({"ref": "refs/heads/task-baseline", "repository": {"full_name": "AgentOps-AI/agentops"}}, open(p, "w", encoding="utf-8"), sort_keys=True)' ; \
+    test -d /home/github/ci-runtime/actions/actions-setup-python@v2; \
+    test -z "$(find /home/github -regextype posix-extended -mindepth 1 \
+        -maxdepth 1 -type d -regex '/home/github/[0-9]+' -print -quit)"; \
+    ! grep -Eq '/home/github/[0-9]+' "$runner"; \
+    ! grep -Eq 'GITHUB_SHA=[0-9a-f]{40}' "$runner"; \
+    grep -Fq 'GITHUB_SHA=$TASK_SOURCE_SHA' "$runner"; \
+    test "$(git -C "$repo" rev-list --all --count)" = 1
+
+# Use one task-local checker both while building the image and immediately
+# before the verifier runs. The latter makes future preparation layers fail
+# closed if they accidentally reintroduce reference history.
+COPY assert_isolation.sh /usr/local/bin/assert-agentops-isolation
+RUN chmod 0755 /usr/local/bin/assert-agentops-isolation && \
+    /usr/local/bin/assert-agentops-isolation --initial
 
 # BenchFlow chowns /home/github/build for the sandbox user at runtime, but this
 # BugSwarm image leaves the parent directory non-traversable for non-root users.
@@ -86,6 +168,11 @@ RUN curl -LsSf https://astral.sh/uv/0.9.22/install.sh | sh && \
     install -m 0755 /root/.local/bin/uv /usr/local/bin/uv && \
     install -m 0755 /root/.local/bin/uvx /usr/local/bin/uvx
 # RUN uv python install 3.10
+
+# Final-image isolation canary. Keep this after all provisioning layers so a
+# later edit cannot silently reintroduce the paired passing artifact.
+RUN set -eux; \
+    /usr/local/bin/assert-agentops-isolation --initial
 
 
 WORKDIR /home/github/build

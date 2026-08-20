@@ -22,7 +22,7 @@ financial-modeling-qa	candidate_not_finalized	verified
 find-topk-similiar-chemicals	validated_skill_only_full_score	verified
 fix-build-agentops	validated_skill_only_full_score	verified
 fix-build-google-auto	candidate_not_finalized	verified
-fix-druid-loophole-cve	validated_skill_only_full_score	verified
+fix-druid-loophole-cve	candidate_not_finalized	verified
 fix-erlang-ssh-cve	candidate_not_finalized	verified
 fix-visual-stability	validated_skill_only_full_score	verified
 flink-query	validated_skill_only_full_score	verified
@@ -56,7 +56,7 @@ pg-essay-to-audiobook	candidate_not_finalized	verified
 powerlifting-coef-calc	validated_skill_only_full_score	verified
 pptx-reference-formatting	validated_skill_only_full_score	verified
 protein-expression-analysis	validated_skill_only_full_score	verified
-python-scala-translation	validated_skill_only_full_score	verified
+python-scala-translation	candidate_not_finalized	verified
 quantum-numerical-simulation	validated_skill_only_full_score	verified
 r2r-mpc-control	validated_skill_only_full_score	verified
 react-performance-debugging	validated_skill_only_full_score	verified

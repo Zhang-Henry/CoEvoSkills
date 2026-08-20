@@ -1,0 +1,6 @@
+# Reference implementations and verifier projects must never enter the agent
+# image, even if a future task snapshot accidentally restores these paths.
+localtest/
+scala_tokenizer/src/
+convert_tokenizer.py
+translate.py

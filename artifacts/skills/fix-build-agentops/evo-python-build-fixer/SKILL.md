@@ -1,80 +1,71 @@
 ---
 name: evo-python-build-fixer
-description: "Diagnose and fix Python CI build failures in repositories using tox/pytest. Analyzes build logs, identifies root causes (version compatibility, logic errors, ordering bugs), generates unified diff patches, and applies fixes. Use when a task requires fixing errors in a Python codebase with CI build failures."
+description: "Fix Python build failures in CI environments. Analyzes tox/pytest failures, identifies version compatibility issues, dependency import errors, and test logic bugs. Produces analysis, diff patches, and applies fixes."
 ---
 
-# Python Build Failure Fixer
+# Python Build Fixer Skill
 
-This skill diagnoses and fixes Python CI build failures in repositories that use tox for test automation and pytest for testing.
+This skill diagnoses and fixes Python build failures in CI environments,
+particularly those using tox for multi-version testing and GitHub Actions.
 
 ## Workflow
 
-1. **Discover** the repository structure and build configuration (tox.ini, pyproject.toml, CI workflows)
-2. **Analyze** build logs to identify the first failing step and root cause
-3. **Diagnose** the error category (version compatibility, logic bug, ordering issue)
-4. **Fix** the source code with minimal targeted changes
-5. **Generate** unified diff patch files
-6. **Verify** by running the test suite
+1. **Discover** the repository structure and build configuration
+2. **Reproduce** the build failure by running tox
+3. **Analyze** error output to classify root causes
+4. **Generate** minimal patches in unified diff format
+5. **Apply** patches and verify fixes
+6. **Validate** all required output artifacts exist
 
-## Quick Start
+## Usage
 
 ```python
 import sys
 sys.path.insert(0, '/app/environment/skills/evo-python-build-fixer/scripts')
-from utils import (
-    discover_repo,
-    analyze_build_logs,
-    find_source_files,
-    check_version_compat_issues,
-    write_analysis,
-    create_patch_from_git_diff,
-    verify_patch_applies,
-    run_tests
-)
+from utils import discover_repo, analyze_build_failure, generate_patch, apply_patches, validate_outputs
 
-# Step 1: Discover repo
-repo_path, repo_name, repo_id = discover_repo('/home/github/build/failed')
+# Step 1: Discover the repository
+repo_path = discover_repo('/home/github/build/failed')
 
-# Step 2: Analyze build logs
-logs = analyze_build_logs('/home/github/build')
-print(f"Failure summary: {logs['summary']}")
+# Step 2: Analyze the build failure
+analysis = analyze_build_failure(repo_path)
 
-# Step 3: Find and check source files
-source_files = find_source_files(repo_path)
-issues = check_version_compat_issues(source_files)
+# Step 3: Write analysis
+write_analysis(analysis, '/home/github/build/failed/failed_reasons.txt')
 
-# Step 4: Write analysis
-write_analysis('/home/github/build/failed/failed_reasons.txt', logs, issues)
+# Step 4: Generate and write patches
+for i, fix in enumerate(analysis['fixes']):
+    patch_content = generate_patch(repo_path, fix['file'], fix['original'], fix['replacement'])
+    patch_path = f"{repo_path}/patch_{i+1}.diff"
+    with open(patch_path, 'w') as f:
+        f.write(patch_content)
 
-# Step 5: After making fixes, create patch
-create_patch_from_git_diff(repo_path, 1)  # Creates patch_1.diff
+# Step 5: Apply patches
+apply_patches(repo_path)
 
-# Step 6: Verify
-verify_patch_applies(repo_path, 1)
-run_tests(repo_path)
+# Step 6: Validate
+validate_outputs(repo_path, '/home/github/build/failed/failed_reasons.txt')
 ```
 
-## Common Failure Patterns
+## Common Error Patterns
 
-### 1. Timestamp/Ordering Logic Bugs
-Methods that update state (like timestamps) after a guard clause that returns early.
-The fix is to move the state update before the guard clause.
-
-### 2. Python Version Compatibility
-- `list[Type]` syntax (Python 3.9+) → use `List[Type]` from typing
-- `dict[K,V]` syntax (Python 3.9+) → use `Dict[K,V]` from typing
-- f-string enhancements (Python 3.12+)
-- walrus operator `:=` (Python 3.8+)
+### 1. Version Compatibility
+- `importlib.metadata` (Python 3.8+)
+- `list[Type]` built-in generics (Python 3.9+ at module level)
 - `match` statements (Python 3.10+)
+- `typing.TypeAlias` (Python 3.10+)
+- f-string enhancements (Python 3.12+)
 
-### 3. Import Errors
-- Missing dependencies in tox deps
-- Module path changes between library versions
+### 2. Dependency Migration
+- `langchain.callbacks.base` moved to `langchain_core.callbacks.base`
+- Other package reorganizations across major versions
 
-## Key Diagnostic Steps
+### 3. Dataclass Default Issues
+- `default_factory` setting values at creation time that should be set later
+- Mutable default arguments
 
-1. Read the CI build logs first - they show the exact error
-2. Look for the WARNING/ERROR lines and tracebacks
-3. Identify which test environment failed (py37, py38, etc.)
-4. Check if the error is in collection (import) or execution (assertion)
-5. Make the minimal fix that preserves behavior
+### 4. Diagnostic Strategy
+- Run tox per-environment to isolate failures
+- Check the first failing step in the pipeline
+- Distinguish tox setup errors from pytest collection errors from test execution errors
+- Correlate errors with Python version to identify compatibility issues

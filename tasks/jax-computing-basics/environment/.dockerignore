@@ -1,0 +1,4 @@
+# Oracle outputs are verifier-only data.  Keep them out of the agent image and
+# out of the Docker build context so a future broad COPY cannot expose them.
+reference/
+generate_data.py

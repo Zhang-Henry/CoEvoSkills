@@ -1,0 +1,8 @@
+# Druid is fetched from the pinned release tag during the build. Keep the local
+# build context empty apart from the Docker recipe.
+*
+!Dockerfile
+!doc/
+!doc/**
+!skills/
+!skills/**

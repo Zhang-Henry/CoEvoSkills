@@ -2,13 +2,31 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import json
+import re
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = REPO_ROOT / "artifacts"
-BACKFILL_NAME = "claude-opus-4.6-skill-only-evidence-backfill-20260809"
+EVALUATIONS = ARTIFACTS / "evaluations"
+RESULTS = EVALUATIONS / "release-skill-only-results.tsv"
+RESULT_COLUMNS = [
+    "task",
+    "release_status",
+    "reward",
+    "tests_passed",
+    "tests_skipped",
+    "tests_total",
+    "condition",
+    "background_documents_available",
+    "clean_lineage",
+    "oracle_agent",
+    "model",
+    "evidence_sha256",
+    "release_skill_tree_sha256",
+    "release_background_doc_tree_sha256",
+]
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 
 def _tree_digest(root: Path) -> str:
@@ -26,73 +44,57 @@ def _tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def _read_tsv(path: Path) -> list[dict[str, str]]:
+def _read_tsv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     with path.open(encoding="utf-8", newline="") as stream:
-        return list(csv.DictReader(stream, delimiter="\t"))
+        reader = csv.DictReader(stream, delimiter="\t")
+        return list(reader.fieldnames or []), list(reader)
 
 
-def test_every_validated_skill_has_public_full_score_evidence() -> None:
-    status_rows = _read_tsv(ARTIFACTS / "skill_status.tsv")
+def test_release_has_one_canonical_result_table() -> None:
+    assert sorted(path.name for path in EVALUATIONS.iterdir()) == [RESULTS.name]
+    columns, rows = _read_tsv(RESULTS)
+    assert columns == RESULT_COLUMNS
+    assert len(rows) == 62
+
+
+def test_canonical_results_match_current_validated_release_artifacts() -> None:
+    _, status_rows = _read_tsv(ARTIFACTS / "skill_status.tsv")
     validated = {
         row["task"]
         for row in status_rows
         if row["status"].startswith("validated_")
     }
+    candidates = {
+        row["task"]
+        for row in status_rows
+        if row["status"].startswith("candidate_")
+    }
+    _, result_rows = _read_tsv(RESULTS)
+    result_tasks = [row["task"] for row in result_rows]
 
-    full_score: set[str] = set()
-    for path in (ARTIFACTS / "evaluations").glob("*.tsv"):
-        for row in _read_tsv(path):
-            if row.get("outcome") != "full_score" or row.get("reward") != "1.0":
-                continue
-            if row.get("release_status", "").startswith("validated_"):
-                full_score.add(row["task"])
+    assert len(status_rows) == 85
+    assert len(validated) == 62
+    assert len(candidates) == 23
+    assert validated.isdisjoint(candidates)
+    assert result_tasks == sorted(validated)
 
-    assert len(validated) == 64
-    assert validated <= full_score
-
-
-def test_historical_backfill_matches_current_release_artifacts() -> None:
-    rows = _read_tsv(
-        ARTIFACTS / "evaluations" / f"{BACKFILL_NAME}.tsv"
-    )
-    assert len(rows) == 9
-    assert len({row["task"] for row in rows}) == len(rows)
-
-    for row in rows:
+    for row in result_rows:
         task = row["task"]
         assert row["release_status"] == "validated_skill_only_full_score"
-        assert row["outcome"] == "full_score"
         assert row["reward"] == "1.0"
-        assert row["tests_passed"] == row["tests_total"]
+        assert int(row["tests_total"]) > 0
+        assert int(row["tests_passed"]) + int(row["tests_skipped"]) == int(
+            row["tests_total"]
+        )
         assert row["condition"] == "skill_only"
         assert row["background_documents_available"] == "false"
         assert row["clean_lineage"] == "verified"
         assert row["oracle_agent"] == "claude-code-skill-only"
+        assert row["model"] == "claude-opus-4-6"
+        assert SHA256_RE.fullmatch(row["evidence_sha256"])
         assert _tree_digest(ARTIFACTS / "skills" / task) == row[
-            "skill_tree_sha256"
+            "release_skill_tree_sha256"
         ]
         assert _tree_digest(ARTIFACTS / "background_docs" / task) == row[
-            "background_doc_tree_sha256"
+            "release_background_doc_tree_sha256"
         ]
-
-    summary = json.loads(
-        (
-            ARTIFACTS
-            / "evaluations"
-            / f"{BACKFILL_NAME}-summary.json"
-        ).read_text(encoding="utf-8")
-    )
-    assert summary["tasks"] == len(rows)
-    assert summary["full_score"] == len(rows)
-    assert summary["verified_current_skill_tree"] == len(rows)
-    assert summary["verified_clean_lineage"] == len(rows)
-    assert summary["release_validated_evidence_coverage"] == 64
-    legacy = [
-        row
-        for row in rows
-        if row["evidence_source"] == "legacy_verifier_stdout_plus_reward"
-    ]
-    assert [row["task"] for row in legacy] == [
-        "find-topk-similiar-chemicals"
-    ]
-    assert summary["legacy_verifier_without_ctrf"] == len(legacy)

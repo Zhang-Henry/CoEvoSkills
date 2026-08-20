@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from scripts.prepare_tasks import main, safe_output, select_tasks, workspace_output
+from scripts.prepare_tasks import (
+    TASK_COPY_IGNORE,
+    main,
+    safe_output,
+    select_tasks,
+    workspace_output,
+)
 
 
 def write_skill_release(release_root: Path) -> None:
@@ -173,6 +179,30 @@ def test_run_scoped_workspace_path_and_validation() -> None:
         workspace_output("evolution", "../shared")
     with pytest.raises(SystemExit, match="set RUN_ID"):
         workspace_output("evolution", "")
+
+
+def test_task_staging_ignores_local_python_caches(tmp_path: Path) -> None:
+    names = [
+        "instruction.md",
+        "module.py",
+        "module.pyc",
+        "module.pyo",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    ]
+
+    ignored = set(TASK_COPY_IGNORE(str(tmp_path), names))
+
+    assert ignored == {
+        "module.pyc",
+        "module.pyo",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
 
 
 def test_output_cannot_overwrite_a_source_or_release_bundle(

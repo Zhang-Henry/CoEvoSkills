@@ -28,6 +28,14 @@ from scripts.task_gen.patch_runtime_compatibility import (
 
 CONDITIONS = {"evolution", "skill-only"}
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+TASK_COPY_IGNORE = shutil.ignore_patterns(
+    "__pycache__",
+    "*.pyc",
+    "*.pyo",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+)
 
 
 def remove_path(path: Path) -> None:
@@ -262,7 +270,12 @@ def main() -> None:
         destination = output / task_name
         if not (source / "task.toml").is_file():
             raise FileNotFoundError(source / "task.toml")
-        shutil.copytree(source, destination, symlinks=True)
+        shutil.copytree(
+            source,
+            destination,
+            symlinks=True,
+            ignore=TASK_COPY_IGNORE,
+        )
         environment = destination / "environment"
         doc = environment / "doc"
         skills = environment / "skills"
